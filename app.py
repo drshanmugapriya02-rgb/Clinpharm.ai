@@ -2,15 +2,20 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 
-# ---------------------------
+# ==============================
+# PAGE CONFIG (MUST BE FIRST)
+# ==============================
+st.set_page_config(page_title="ClinPharm AI", layout="wide")
+
+# ==============================
 # DATABASE CONNECTION
-# ---------------------------
+# ==============================
 conn = sqlite3.connect("drug_database.db", check_same_thread=False)
 cursor = conn.cursor()
 
-# ---------------------------
-# CREATE TABLE (WITH UNIQUE)
-# ---------------------------
+# ==============================
+# CREATE TABLE
+# ==============================
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS drugs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -25,47 +30,49 @@ CREATE TABLE IF NOT EXISTS drugs (
 )
 """)
 
-# ---------------------------
-# INSERT STARTER HOSPITAL DRUGS
-# ---------------------------
-cursor.executemany("""
-INSERT OR IGNORE INTO drugs
-(name, drug_class, indication, adult_dose, renal_adjustment, pregnancy, schedule, icu)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-""", [
+# ==============================
+# INSERT DATA ONLY IF EMPTY
+# ==============================
+cursor.execute("SELECT COUNT(*) FROM drugs")
+count = cursor.fetchone()[0]
 
-("Nitroglycerin", "Nitrate", "Angina",
-"0.3–0.6 mg SL", "No adjustment", "Caution", "H", 1),
+if count == 0:
+    cursor.executemany("""
+    INSERT INTO drugs
+    (name, drug_class, indication, adult_dose, renal_adjustment, pregnancy, schedule, icu)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, [
 
-("Adrenaline", "Vasopressor", "Anaphylaxis, Cardiac arrest",
-"0.5 mg IM", "No adjustment", "Safe in emergency", "H", 1),
+    ("Nitroglycerin", "Nitrate", "Angina",
+     "0.3–0.6 mg SL", "No adjustment", "Caution", "H", 1),
 
-("Meropenem", "Carbapenem", "Severe infections",
-"1 g IV q8h", "Reduce in renal impairment", "Caution", "H1", 1),
+    ("Adrenaline", "Vasopressor", "Anaphylaxis, Cardiac arrest",
+     "0.5 mg IM", "No adjustment", "Safe in emergency", "H", 1),
 
-("Metformin", "Biguanide", "Type 2 Diabetes",
-"500 mg BD", "Avoid if eGFR <30", "Safe", "H", 0),
+    ("Meropenem", "Carbapenem", "Severe infections",
+     "1 g IV q8h", "Reduce in renal impairment", "Caution", "H1", 1),
 
-("Warfarin", "Anticoagulant", "DVT, Atrial fibrillation",
-"5 mg daily (adjust by INR)", "No change", "Avoid", "H", 0),
+    ("Metformin", "Biguanide", "Type 2 Diabetes",
+     "500 mg BD", "Avoid if eGFR <30", "Safe", "H", 0),
 
-("Ceftriaxone", "Cephalosporin", "Bacterial infections",
-"1–2 g IV daily", "No major adjustment", "Safe", "H", 1)
+    ("Warfarin", "Anticoagulant", "DVT, Atrial fibrillation",
+     "5 mg daily (adjust by INR)", "No change", "Avoid", "H", 0),
 
-])
+    ("Ceftriaxone", "Cephalosporin", "Bacterial infections",
+     "1–2 g IV daily", "No major adjustment", "Safe", "H", 1)
 
-conn.commit()
+    ])
 
-# ---------------------------
-# STREAMLIT UI
-# ---------------------------
-st.set_page_config(page_title="ClinPharm AI", layout="wide")
+    conn.commit()
 
-st.title("🏥 ClinPharm AI – Updated Hospital Edition")
+# ==============================
+# APP TITLE
+# ==============================
+st.title("🏥 ClinPharm AI – Hospital Edition")
 
-# ---------------------------
+# ==============================
 # SIDEBAR FILTERS
-# ---------------------------
+# ==============================
 st.sidebar.header("Filter Options")
 
 classes = pd.read_sql_query("SELECT DISTINCT drug_class FROM drugs", conn)
@@ -83,14 +90,14 @@ icu_filter = st.sidebar.selectbox(
     ["All", "Yes", "No"]
 )
 
-# ---------------------------
-# SEARCH BAR
-# ---------------------------
+# ==============================
+# SEARCH INPUT
+# ==============================
 search = st.text_input("🔍 Search Drug by Name")
 
-# ---------------------------
+# ==============================
 # BUILD QUERY
-# ---------------------------
+# ==============================
 query = "SELECT * FROM drugs WHERE 1=1"
 params = []
 
@@ -111,12 +118,16 @@ if icu_filter == "Yes":
 elif icu_filter == "No":
     query += " AND icu = 0"
 
-# ---------------------------
+# ==============================
 # EXECUTE QUERY
-# ---------------------------
+# ==============================
 df = pd.read_sql_query(query, conn, params=params)
 
+# ==============================
+# DISPLAY RESULTS
+# ==============================
 if not df.empty:
     st.dataframe(df, use_container_width=True)
 else:
     st.warning("No drugs found based on selected filters.")
+    final stable hospital version 
