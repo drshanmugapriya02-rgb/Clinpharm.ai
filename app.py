@@ -61,7 +61,7 @@ conn.commit()
 # ---------------------------
 st.set_page_config(page_title="ClinPharm AI", layout="wide")
 
-st.title("🏥 ClinPharm AI – Hospital Edition")
+st.title("🏥 ClinPharm AI – Updated Hospital Edition")
 
 # ---------------------------
 # SIDEBAR FILTERS
