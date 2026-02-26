@@ -1,23 +1,47 @@
 import streamlit as st
 import sqlite3
 import pandas as pd
+import hashlib
 
 # ==============================
-# PAGE CONFIG (MUST BE FIRST)
+# PAGE CONFIG
 # ==============================
-st.set_page_config(page_title="ClinPharm AI", layout="wide")
+st.set_page_config(page_title="ClinPharm AI",
+                   page_icon="💊",
+                   layout="wide")
+
+st.markdown("""
+<style>
+.main {
+    background-color: #0E1117;
+}
+.stButton>button {
+    background-color:#005BAC;
+    color:white;
+    border-radius:10px;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # ==============================
-# DATABASE CONNECTION
+# DATABASE
 # ==============================
-conn = sqlite3.connect("drug_database.db", check_same_thread=False)
+conn = sqlite3.connect("clinpharm.db", check_same_thread=False)
 cursor = conn.cursor()
 
-# ==============================
-# CREATE TABLE
-# ==============================
+# Users Table
 cursor.execute("""
-CREATE TABLE IF NOT EXISTS drugs (
+CREATE TABLE IF NOT EXISTS users(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE,
+    password TEXT,
+    role TEXT
+)
+""")
+
+# Drug Table
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS drugs(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT UNIQUE,
     drug_class TEXT,
@@ -25,109 +49,214 @@ CREATE TABLE IF NOT EXISTS drugs (
     adult_dose TEXT,
     renal_adjustment TEXT,
     pregnancy TEXT,
-    schedule TEXT,
-    icu BOOLEAN
+    interactions TEXT
 )
 """)
 
+# Patient Profile Table
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS patients(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT,
+    age INTEGER,
+    diagnosis TEXT,
+    medications TEXT
+)
+""")
+
+conn.commit()
+
 # ==============================
-# INSERT DATA ONLY IF EMPTY
+# HELPER FUNCTIONS
 # ==============================
-cursor.execute("SELECT COUNT(*) FROM drugs")
-count = cursor.fetchone()[0]
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
 
-if count == 0:
-    cursor.executemany("""
-    INSERT INTO drugs
-    (name, drug_class, indication, adult_dose, renal_adjustment, pregnancy, schedule, icu)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, [
-
-    ("Nitroglycerin", "Nitrate", "Angina",
-     "0.3–0.6 mg SL", "No adjustment", "Caution", "H", 1),
-
-    ("Adrenaline", "Vasopressor", "Anaphylaxis, Cardiac arrest",
-     "0.5 mg IM", "No adjustment", "Safe in emergency", "H", 1),
-
-    ("Meropenem", "Carbapenem", "Severe infections",
-     "1 g IV q8h", "Reduce in renal impairment", "Caution", "H1", 1),
-
-    ("Metformin", "Biguanide", "Type 2 Diabetes",
-     "500 mg BD", "Avoid if eGFR <30", "Safe", "H", 0),
-
-    ("Warfarin", "Anticoagulant", "DVT, Atrial fibrillation",
-     "5 mg daily (adjust by INR)", "No change", "Avoid", "H", 0),
-
-    ("Ceftriaxone", "Cephalosporin", "Bacterial infections",
-     "1–2 g IV daily", "No major adjustment", "Safe", "H", 1)
-
-    ])
-
+def add_user(username, password, role):
+    cursor.execute("INSERT INTO users (username,password,role) VALUES (?,?,?)",
+                   (username, hash_password(password), role))
     conn.commit()
 
-# ==============================
-# APP TITLE
-# ==============================
-st.title("🏥 ClinPharm AI – Hospital Edition")
+def login_user(username, password):
+    cursor.execute("SELECT * FROM users WHERE username=? AND password=?",
+                   (username, hash_password(password)))
+    return cursor.fetchone()
 
 # ==============================
-# SIDEBAR FILTERS
+# LOGIN PAGE
 # ==============================
-st.sidebar.header("Filter Options")
+st.title("🏥 ClinPharm AI Dashboard")
 
-classes = pd.read_sql_query("SELECT DISTINCT drug_class FROM drugs", conn)
-class_list = classes["drug_class"].dropna().tolist()
+menu = ["Login", "Register"]
+choice = st.sidebar.selectbox("Menu", menu)
 
-selected_class = st.sidebar.selectbox("Select Drug Class", ["All"] + class_list)
+if choice == "Register":
+    st.subheader("Create Account")
+    new_user = st.text_input("Username")
+    new_password = st.text_input("Password", type='password')
+    role = st.selectbox("Role", ["Intern", "Clinical Pharmacist"])
+    if st.button("Register"):
+        add_user(new_user, new_password, role)
+        st.success("Account Created Successfully")
 
-selected_schedule = st.sidebar.selectbox(
-    "Select Schedule",
-    ["All", "H", "H1", "X"]
-)
-
-icu_filter = st.sidebar.selectbox(
-    "ICU Drugs Only?",
-    ["All", "Yes", "No"]
-)
-
-# ==============================
-# SEARCH INPUT
-# ==============================
-search = st.text_input("🔍 Search Drug by Name")
-
-# ==============================
-# BUILD QUERY
-# ==============================
-query = "SELECT * FROM drugs WHERE 1=1"
-params = []
-
-if search:
-    query += " AND LOWER(name) LIKE ?"
-    params.append(f"%{search.lower()}%")
-
-if selected_class != "All":
-    query += " AND drug_class = ?"
-    params.append(selected_class)
-
-if selected_schedule != "All":
-    query += " AND schedule = ?"
-    params.append(selected_schedule)
-
-if icu_filter == "Yes":
-    query += " AND icu = 1"
-elif icu_filter == "No":
-    query += " AND icu = 0"
+elif choice == "Login":
+    username = st.text_input("Username")
+    password = st.text_input("Password", type='password')
+    if st.button("Login"):
+        user = login_user(username, password)
+        if user:
+            st.success(f"Welcome {username} ({user[3]})")
+            st.session_state["logged_in"] = True
+            st.session_state["role"] = user[3]
+        else:
+            st.error("Invalid Credentials")
 
 # ==============================
-# EXECUTE QUERY
+# MAIN DASHBOARD
 # ==============================
-df = pd.read_sql_query(query, conn, params=params)
+if "logged_in" in st.session_state:
 
-# ==============================
-# DISPLAY RESULTS
-# ==============================
-if not df.empty:
-    st.dataframe(df, use_container_width=True)
-else:
-    st.warning("No drugs found based on selected filters.")
-    final stable hospital version 
+    st.sidebar.title("Navigation")
+    module = st.sidebar.radio("Select Module", [
+        "Drug Database",
+        "Interaction Checker",
+        "Renal Dose Calculator",
+        "AI Symptom Suggestion",
+        "Antibiotic Stewardship",
+        "Antibiotic Spectrum",
+        "Clinical Calculator",
+        "Patient Medication Profile",
+        "Prescription Error Detection",
+        "Crash Cart"
+    ])
+
+    # --------------------------
+    # Drug Database
+    # --------------------------
+    if module == "Drug Database":
+        st.header("💊 Drug Database")
+        df = pd.read_sql_query("SELECT * FROM drugs", conn)
+        st.dataframe(df)
+
+    # --------------------------
+    # Interaction Checker
+    # --------------------------
+    if module == "Interaction Checker":
+        st.header("⚠ Drug Interaction Checker")
+        drug1 = st.text_input("Drug 1")
+        drug2 = st.text_input("Drug 2")
+        if st.button("Check Interaction"):
+            if drug1.lower() == "warfarin" and drug2.lower() == "aspirin":
+                st.error("Major Interaction: Increased Bleeding Risk")
+            else:
+                st.success("No major interaction found (Demo Version)")
+
+    # --------------------------
+    # Renal Dose Calculator
+    # --------------------------
+    if module == "Renal Dose Calculator":
+        st.header("🧮 Renal Dose Calculator")
+        age = st.number_input("Age")
+        weight = st.number_input("Weight (kg)")
+        serum_creat = st.number_input("Serum Creatinine")
+        gender = st.selectbox("Gender", ["Male", "Female"])
+        if st.button("Calculate CrCl"):
+            crcl = ((140 - age) * weight) / (72 * serum_creat)
+            if gender == "Female":
+                crcl *= 0.85
+            st.success(f"Estimated CrCl: {round(crcl,2)} mL/min")
+
+    # --------------------------
+    # AI Symptom Suggestion
+    # --------------------------
+    if module == "AI Symptom Suggestion":
+        st.header("🤖 AI Symptom Based Drug Suggestion")
+        symptom = st.text_input("Enter Symptom")
+        if st.button("Suggest"):
+            if "fever" in symptom.lower():
+                st.info("Suggested: Paracetamol 500mg")
+            elif "pain" in symptom.lower():
+                st.info("Suggested: Ibuprofen 400mg")
+            else:
+                st.warning("Refer Clinical Guidelines")
+
+    # --------------------------
+    # Antibiotic Stewardship
+    # --------------------------
+    if module == "Antibiotic Stewardship":
+        st.header("🦠 Antibiotic Stewardship")
+        infection = st.selectbox("Infection Type",
+                                 ["UTI", "Pneumonia", "Sepsis"])
+        if infection == "UTI":
+            st.write("Recommended: Nitrofurantoin")
+        elif infection == "Pneumonia":
+            st.write("Recommended: Ceftriaxone + Azithromycin")
+
+    # --------------------------
+    # Antibiotic Spectrum
+    # --------------------------
+    if module == "Antibiotic Spectrum":
+        st.header("📊 Antibiotic Spectrum Chart")
+        data = {
+            "Antibiotic": ["Ceftriaxone", "Meropenem"],
+            "Gram +": ["Yes", "Yes"],
+            "Gram -": ["Yes", "Yes"],
+            "Anaerobes": ["No", "Yes"]
+        }
+        st.table(pd.DataFrame(data))
+
+    # --------------------------
+    # Clinical Calculator
+    # --------------------------
+    if module == "Clinical Calculator":
+        st.header("🧮 Clinical Calculator")
+        glucose = st.number_input("Blood Glucose")
+        if st.button("Interpret"):
+            if glucose > 200:
+                st.error("Hyperglycemia")
+            else:
+                st.success("Normal")
+
+    # --------------------------
+    # Patient Medication Profile
+    # --------------------------
+    if module == "Patient Medication Profile":
+        st.header("📁 Patient Medication Profile")
+        name = st.text_input("Patient Name")
+        age = st.number_input("Age", 1, 120)
+        diagnosis = st.text_input("Diagnosis")
+        meds = st.text_area("Medications")
+        if st.button("Save Patient"):
+            cursor.execute("INSERT INTO patients (name,age,diagnosis,medications) VALUES (?,?,?,?)",
+                           (name, age, diagnosis, meds))
+            conn.commit()
+            st.success("Patient Saved")
+
+        df = pd.read_sql_query("SELECT * FROM patients", conn)
+        st.dataframe(df)
+
+    # --------------------------
+    # Prescription Error Detection
+    # --------------------------
+    if module == "Prescription Error Detection":
+        st.header("🚨 Prescription Error Detection")
+        dose = st.number_input("Entered Dose (mg)")
+        if dose > 1000:
+            st.error("Possible Overdose Alert!")
+        else:
+            st.success("Dose within safe range")
+
+    # --------------------------
+    # Crash Cart
+    # --------------------------
+    if module == "Crash Cart":
+        st.header("🚑 Emergency Crash Cart")
+        crash_cart = [
+            "Adrenaline",
+            "Atropine",
+            "Amiodarone",
+            "Dopamine",
+            "Magnesium Sulfate",
+            "Sodium Bicarbonate"
+        ]
+        st.write(crash_cart)
