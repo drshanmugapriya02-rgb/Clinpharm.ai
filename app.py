@@ -15,7 +15,7 @@ drug_database = {
 user_input = st.text_input("Enter drug name:")
 
 if user_input:
-    drug = user_input.lower()
+    drug = user_input.strip().lower()
     if drug in drug_database:
         st.success(drug_database[drug])
     else:
