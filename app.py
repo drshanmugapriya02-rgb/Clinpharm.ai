@@ -1,22 +1,53 @@
 import streamlit as st
+import sqlite3
+import pandas as pd
 
-st.set_page_config(page_title="ClinPharm AI", page_icon="🩺")
+# Connect to database
+conn = sqlite3.connect("drug_database.db")
+cursor = conn.cursor()
 
-st.title("🩺 ClinPharm AI - Clinical Assistant (Free Version)")
-st.write("Ask basic drug-related questions.")
+# Create table
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS drugs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT,
+    drug_class TEXT,
+    indication TEXT,
+    adult_dose TEXT,
+    renal_adjustment TEXT,
+    pregnancy TEXT,
+    schedule TEXT,
+    icu BOOLEAN
+)
+""")
 
-drug_database = {
-    "paracetamol": "Paracetamol is used for fever and mild to moderate pain. Adult dose: 500-1000 mg every 6 hours. Max: 4g/day.",
-    "ibuprofen": "Ibuprofen is an NSAID used for pain and inflammation. Adult dose: 200-400 mg every 6-8 hours.",
-    "amoxicillin": "Amoxicillin is a penicillin antibiotic used for bacterial infections.",
-    "metformin": "Metformin is used in Type 2 Diabetes. Starting dose: 500 mg once or twice daily with meals."
-}
+conn.commit()
 
-user_input = st.text_input("Enter drug name:")
+st.title("ClinPharm AI – Hospital Edition")
 
-if user_input:
-    drug = user_input.strip().lower()
-    if drug in drug_database:
-        st.success(drug_database[drug])
+# Search section
+search = st.text_input("Search Drug")
+
+if search:
+    query = f"""
+    SELECT * FROM drugs
+    WHERE LOWER(name) LIKE '%{search.lower()}%'
+    """
+    df = pd.read_sql_query(query, conn)
+
+    if not df.empty:
+        st.dataframe(df)
     else:
-        st.warning("Drug not found in database.")
+        st.warning("Drug not found.")cursor.execute("""
+INSERT OR IGNORE INTO drugs
+(name, drug_class, indication, adult_dose, renal_adjustment, pregnancy, schedule, icu)
+VALUES
+('Nitroglycerin', 'Nitrate', 'Angina', 
+'0.3-0.6 mg SL', 
+'No adjustment usually', 
+'Caution', 
+'H', 
+1)
+""")
+
+conn.commit()
