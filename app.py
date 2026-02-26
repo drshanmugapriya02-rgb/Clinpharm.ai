@@ -1,4 +1,4 @@
-import streamlit as st
+importeamlit as st
 from openai import OpenAI
 
 st.title("🩺 ClinPharm AI - Clinical Assistant")
